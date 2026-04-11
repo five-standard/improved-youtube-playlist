@@ -182,7 +182,8 @@ ytd-download-button-renderer {
 }
 
 .yt-pb-list.active,
-.yt-pb-repeat.active {
+.yt-pb-repeat.active,
+.yt-pb-hide-ui.active {
   color: #3ea6ff !important;
 }
 
@@ -221,33 +222,6 @@ ytd-download-button-renderer {
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
-/* Arrow pointing down toward the list button */
-#yt-playlist-panel::before,
-#yt-playlist-panel::after {
-  content: '';
-  position: absolute;
-  left: var(--arrow-left, 50%);
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-
-/* Border layer (slightly larger, border colour) */
-#yt-playlist-panel::before {
-  bottom: -11px;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 10px solid rgba(255, 255, 255, 0.15);
-}
-
-/* Fill layer (panel background colour) */
-#yt-playlist-panel::after {
-  bottom: -9px;
-  border-left: 9px solid transparent;
-  border-right: 9px solid transparent;
-  border-top: 9px solid rgba(15, 15, 15, 0.92);
-}
 
 #yt-playlist-panel::-webkit-scrollbar { width: 4px; }
 #yt-playlist-panel::-webkit-scrollbar-track { background: transparent; }
@@ -329,6 +303,68 @@ ytd-download-button-renderer {
 
 .yt-pp-item.current .yt-pp-channel {
   color: rgba(255, 255, 255, 0.55);
+}
+
+/* ─── Volume Bar ──────────────────────────────────────────────────────────── */
+
+.yt-pb-vol-bar {
+  width: 130px;
+  min-width: 100px;
+  cursor: ew-resize;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  gap: 6px;
+  padding: 0 10px;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+/* Volume fill */
+.yt-pb-vol-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: calc(var(--volume, 100) * 1%);
+  background: rgba(62, 166, 255, 0.15);
+  pointer-events: none;
+  z-index: 0;
+}
+
+
+.yt-pb-vol-icon {
+  position: relative;
+  z-index: 10;
+  color: rgba(255, 255, 255, 0.65);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.yt-pb-vol-pct {
+  position: relative;
+  z-index: 10;
+  font-size: 11px;
+  font-family: "Roboto", "Arial", sans-serif;
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Hide YouTube's native controls while playlist is active */
+body.yt-ext-pl-active .ytp-chrome-bottom {
+  display: none !important;
+}
+
+body.yt-ext-pl-active #movie_player.ytp-fullscreen .ytp-chrome-top,
+body.yt-ext-pl-active #movie_player.ytp-fullscreen .ytp-suggested-action,
+body.yt-ext-pl-active #movie_player.ytp-fullscreen yt-player-overlay-video-details-renderer,
+body.yt-ext-pl-active #movie_player.ytp-fullscreen yt-player-quick-action-buttons {
+  display: none !important;
 }
 
 /* Hide YouTube's "재생목록에 저장" button */
@@ -546,6 +582,22 @@ html[dark] .yt-sm-group-item.selected .yt-sm-check-icon,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Group separator in save modal */
+.yt-sm-separator {
+  padding: 5px 16px;
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-align: center;
+  color: #aaa;
+  user-select: none;
+  pointer-events: none;
+}
+
+html[dark] .yt-sm-separator,
+[dark] .yt-sm-separator {
+  color: #666;
 }
 
 /* Empty placeholder */

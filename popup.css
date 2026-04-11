@@ -283,6 +283,7 @@ input, textarea {
   flex-shrink: 0;
 }
 
+.playlist-reverse-btn,
 .playlist-rename-btn {
   background: none;
   border: none;
@@ -296,6 +297,7 @@ input, textarea {
   transition: color 0.15s;
 }
 
+.playlist-reverse-btn:hover,
 .playlist-rename-btn:hover {
   color: var(--blue);
 }
@@ -480,12 +482,91 @@ input, textarea {
 
 .delete-btn:hover { color: var(--accent); }
 
+/* ── Group Separator ── */
+.group-separator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  cursor: default;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.group-separator:hover {
+  opacity: 1;
+}
+
+.group-separator.group-dragging {
+  opacity: 0.35;
+}
+
+.group-separator.drag-group-above {
+  border-top: 2px solid var(--blue);
+}
+
+.group-separator.drag-group-below {
+  border-bottom: 2px solid var(--blue);
+}
+
+.group-separator-handle {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.25);
+  cursor: grab;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+
+.group-separator:hover .group-separator-handle {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.group-separator-line {
+  flex: 1;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text2);
+  text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.group-separator-delete {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text2);
+  cursor: pointer;
+  padding: 0;
+  line-height: 0;
+  transition: color 0.15s;
+}
+
+.group-separator:hover .group-separator-delete {
+  display: flex;
+  align-items: center;
+}
+
+.group-separator-delete:hover {
+  color: var(--accent);
+}
+
 /* ── Playlist Create Footer ── */
 .playlist-create-wrap {
   padding: 10px 14px 6px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.playlist-create-action-row {
+  display: flex;
+  gap: 12px;
 }
 
 .playlist-create-toggle {

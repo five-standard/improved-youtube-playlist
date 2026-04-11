@@ -1,15 +1,43 @@
 (function () {
   'use strict';
 
-  // Runs in the page's MAIN world — has full access to YouTube's JavaScript
-  // context (Polymer/Lit app element, internal event system, etc.).
-  //
-  // content.js (isolated world) cannot trigger YouTube's SPA router directly
-  // because programmatic events are untrusted (isTrusted: false) and Chrome's
-  // isolated world prevents access to page-level JS objects.
-  //
-  // Communication: content.js → CustomEvent('yt-ext-navigate') → this file
-  // triggers YouTube's own 'yt-navigate' event on ytd-app.
+  // ── Media key intercept ───────────────────────────────────────────────────
+  // While a playlist is active (yt-ext-pl in sessionStorage), prevent YouTube
+  // from re-registering previoustrack / nexttrack handlers and overriding the
+  // ones set by content.js (isolated world).
+  const _origSetAction = navigator.mediaSession.setActionHandler.bind(navigator.mediaSession);
+  navigator.mediaSession.setActionHandler = function (type, handler) {
+    if ((type === 'previoustrack' || type === 'nexttrack')
+        && sessionStorage.getItem('yt-ext-pl') !== null) {
+      return; // playlist active — keep content.js handlers intact
+    }
+    _origSetAction(type, handler);
+  };
+  // ──────────────────────────────────────────────────────────────────────────
+
+  // ── Volume spike prevention ────────────────────────────────────────────────
+  // When the extension has a playlist active it writes the desired volume to
+  // sessionStorage['yt-ext-vol'].  We intercept every HTMLMediaElement.volume
+  // set so YouTube's own volume resets (on SPA navigation, player init, etc.)
+  // are silently replaced with our value before any audio is produced.
+  // Running at document_start guarantees the override is in place before any
+  // YouTube script executes.
+  const _volDesc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'volume');
+  if (_volDesc && _volDesc.set) {
+    Object.defineProperty(HTMLMediaElement.prototype, 'volume', {
+      get: _volDesc.get,
+      set(v) {
+        const raw = sessionStorage.getItem('yt-ext-vol');
+        if (raw !== null) {
+          const desired = parseFloat(raw);
+          if (!isNaN(desired)) { _volDesc.set.call(this, desired); return; }
+        }
+        _volDesc.set.call(this, v);
+      },
+      configurable: true,
+    });
+  }
+  // ──────────────────────────────────────────────────────────────────────────
 
   document.addEventListener('yt-ext-navigate', (e) => {
     const videoId = e.detail?.videoId;

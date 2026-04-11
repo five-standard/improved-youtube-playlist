@@ -20,7 +20,7 @@
       "matches": ["https://www.youtube.com/watch*"],
       "js": ["content-main.js"],
       "world": "MAIN",
-      "run_at": "document_idle"
+      "run_at": "document_start"
     }
   ]
 }
