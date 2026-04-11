@@ -1,0 +1,762 @@
+ytd-download-button-renderer {
+  margin-left: 0 !important;
+}
+
+/* ─── Playlist Bar ─────────────────────────────────────────────────────────── */
+
+#yt-playlist-wrap {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9998;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-family: "Roboto", "Arial", sans-serif;
+  user-select: none;
+}
+
+.yt-pb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yt-pb-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 40px;
+  padding: 0 14px;
+  background: rgba(15, 15, 15, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  white-space: nowrap;
+}
+
+.yt-pb-info-group {
+  gap: 6px;
+  width: fit-content;
+  max-width: 420px;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate; /* new stacking context so z-index on children works */
+}
+
+/* Progress fill — z-index:0 keeps it behind all child content */
+.yt-pb-info-group::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: calc(var(--progress, 0) * 1%);
+  background: rgba(62, 166, 255, 0.15);
+  pointer-events: none;
+  transition: width 0.5s linear;
+  z-index: 0;
+}
+
+/* Reset only the info group children so YouTube styles don't break sizing */
+.yt-pb-info-group > * {
+  all: revert;
+  box-sizing: border-box;
+}
+
+.yt-pb-ch-avatar {
+  display: block !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  flex-shrink: 0 !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+.yt-pb-ch-name {
+  display: block !important;
+  font-size: 11px !important;
+  font-family: "Roboto", "Arial", sans-serif !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  max-width: 90px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  line-height: normal !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+.yt-pb-video-title {
+  display: block !important;
+  font-size: 12px !important;
+  font-family: "Roboto", "Arial", sans-serif !important;
+  color: #fff !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  max-width: 160px !important;
+  flex-shrink: 1 !important;
+  padding: 0 2px !important;
+  line-height: normal !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+.yt-pb-sep {
+  display: block !important;
+  font-size: 11px !important;
+  font-family: "Roboto", "Arial", sans-serif !important;
+  color: rgba(255, 255, 255, 0.25) !important;
+  flex-shrink: 0 !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+.yt-pb-time {
+  display: block !important;
+  font-size: 12px !important;
+  font-family: "Roboto", "Arial", sans-serif !important;
+  color: rgba(255, 255, 255, 0.55) !important;
+  font-variant-numeric: tabular-nums !important;
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+  line-height: normal !important;
+  position: relative !important;
+  z-index: 10 !important;
+}
+
+.yt-pb-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.65);
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.yt-pb-btn:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.yt-pb-btn:disabled {
+  color: rgba(255, 255, 255, 0.2);
+  cursor: default;
+}
+
+.yt-pb-stop:hover:not(:disabled) {
+  color: #ff4444 !important;
+  background: rgba(255, 68, 68, 0.12) !important;
+}
+
+.yt-pb-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+}
+
+.yt-pb-pos {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+  padding: 0 2px;
+}
+
+.yt-pb-list.active,
+.yt-pb-repeat.active {
+  color: #3ea6ff !important;
+}
+
+.yt-pb-util-group {
+  gap: 2px;
+}
+
+.yt-pb-drag-handle {
+  cursor: grab;
+}
+
+.yt-pb-drag-handle.dragging {
+  cursor: grabbing;
+}
+
+.yt-pb-reset-pos:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Playlist Panel — positioned via JS as position:fixed above the list button */
+#yt-playlist-panel {
+  background: rgba(15, 15, 15, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  overflow-y: auto;
+  max-height: 280px;
+  width: 380px;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  z-index: 9999;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* Arrow pointing down toward the list button */
+#yt-playlist-panel::before,
+#yt-playlist-panel::after {
+  content: '';
+  position: absolute;
+  left: var(--arrow-left, 50%);
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Border layer (slightly larger, border colour) */
+#yt-playlist-panel::before {
+  bottom: -11px;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 10px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Fill layer (panel background colour) */
+#yt-playlist-panel::after {
+  bottom: -9px;
+  border-left: 9px solid transparent;
+  border-right: 9px solid transparent;
+  border-top: 9px solid rgba(15, 15, 15, 0.92);
+}
+
+#yt-playlist-panel::-webkit-scrollbar { width: 4px; }
+#yt-playlist-panel::-webkit-scrollbar-track { background: transparent; }
+#yt-playlist-panel::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
+#yt-playlist-panel::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.3); }
+
+.yt-pp-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.6);
+  font-family: "Roboto", "Arial", sans-serif;
+  transition: background 0.1s, color 0.1s;
+}
+
+.yt-pp-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.yt-pp-item.current {
+  background: rgba(62, 166, 255, 0.12);
+  color: #fff;
+}
+
+.yt-pp-idx {
+  font-size: 11px;
+  min-width: 18px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.yt-pp-item.current .yt-pp-idx {
+  color: #3ea6ff;
+}
+
+.yt-pp-thumb {
+  width: 80px;
+  height: 45px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.yt-pp-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.yt-pp-title {
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.yt-pp-channel {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.38);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yt-pp-item.current .yt-pp-channel {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Hide YouTube's "재생목록에 저장" button */
+[aria-label="재생목록에 저장"] {
+  display: none !important;
+}
+
+#yt-direct-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 16px 4px 8px;
+  border: none;
+  border-radius: 18px;
+  background-color: rgba(0, 0, 0, 0.06);
+  color: var(--yt-spec-text-primary, #0f0f0f);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: "Roboto", "Arial", sans-serif;
+  cursor: pointer;
+  vertical-align: top;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+#yt-direct-save-btn:hover {
+  background-color: rgba(0, 0, 0, 0.12);
+}
+
+#yt-direct-save-btn svg {
+  fill: currentColor;
+  flex-shrink: 0;
+}
+
+#yt-direct-save-btn.saved {
+  background-color: #065fd4;
+  color: #fff;
+}
+
+#yt-direct-save-btn.saved:hover {
+  background-color: #0356c2;
+}
+
+/* YouTube dark mode */
+html[dark] #yt-direct-save-btn,
+[dark] #yt-direct-save-btn {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+html[dark] #yt-direct-save-btn:hover,
+[dark] #yt-direct-save-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ─── Group Save Modal ─────────────────────────────────────────────────────── */
+
+#yt-save-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "Roboto", "Arial", sans-serif;
+}
+
+.yt-sm-dialog {
+  background: #fff;
+  border-radius: 12px;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: 520px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+html[dark] .yt-sm-dialog,
+[dark] .yt-sm-dialog {
+  background: #212121;
+  color: #fff;
+}
+
+/* Header */
+.yt-sm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+html[dark] .yt-sm-header,
+[dark] .yt-sm-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.yt-sm-header span {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f0f0f;
+}
+
+html[dark] .yt-sm-header span,
+[dark] .yt-sm-header span {
+  color: #fff;
+}
+
+.yt-sm-close-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: #606060;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+
+.yt-sm-close-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+html[dark] .yt-sm-close-btn,
+[dark] .yt-sm-close-btn {
+  color: #aaa;
+}
+
+html[dark] .yt-sm-close-btn:hover,
+[dark] .yt-sm-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Body */
+.yt-sm-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Group list */
+.yt-sm-groups {
+  display: flex;
+  flex-direction: column;
+}
+
+.yt-sm-group-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 11px 16px;
+  font-size: 14px;
+  color: #0f0f0f;
+  cursor: pointer;
+  text-align: left;
+  font-family: "Roboto", "Arial", sans-serif;
+  transition: background 0.1s;
+}
+
+.yt-sm-group-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+html[dark] .yt-sm-group-item,
+[dark] .yt-sm-group-item {
+  color: #fff;
+}
+
+html[dark] .yt-sm-group-item:hover,
+[dark] .yt-sm-group-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.yt-sm-check-icon {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #909090;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: transparent;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.yt-sm-group-item.selected .yt-sm-check-icon {
+  background: #065fd4;
+  border-color: #065fd4;
+  color: #fff;
+}
+
+html[dark] .yt-sm-group-item.selected .yt-sm-check-icon,
+[dark] .yt-sm-group-item.selected .yt-sm-check-icon {
+  background: #3ea6ff;
+  border-color: #3ea6ff;
+  color: #0f0f0f;
+}
+
+.yt-sm-group-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Empty placeholder */
+.yt-sm-empty {
+  padding: 20px 16px 12px;
+  font-size: 13px;
+  color: #606060;
+}
+
+html[dark] .yt-sm-empty,
+[dark] .yt-sm-empty {
+  color: #aaa;
+}
+
+.yt-sm-inline-link {
+  background: none;
+  border: none;
+  font-size: 13px;
+  font-family: "Roboto", "Arial", sans-serif;
+  color: #606060;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s, font-weight 0.1s;
+}
+
+.yt-sm-inline-link:hover {
+  color: #0f0f0f;
+  font-weight: 600;
+}
+
+html[dark] .yt-sm-inline-link,
+[dark] .yt-sm-inline-link {
+  color: #aaa;
+}
+
+html[dark] .yt-sm-inline-link:hover,
+[dark] .yt-sm-inline-link:hover {
+  color: #fff;
+}
+
+/* "재생목록 생성" toggle button */
+.yt-sm-toggle-create-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 11px 16px;
+  font-size: 14px;
+  font-family: "Roboto", "Arial", sans-serif;
+  color: #606060;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.1s, color 0.15s;
+}
+
+.yt-sm-toggle-create-btn::before {
+  content: "+";
+  font-size: 18px;
+  line-height: 1;
+  color: #606060;
+  transition: color 0.15s;
+}
+
+.yt-sm-toggle-create-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #0f0f0f;
+}
+
+.yt-sm-toggle-create-btn:hover::before {
+  color: #0f0f0f;
+}
+
+html[dark] .yt-sm-toggle-create-btn,
+[dark] .yt-sm-toggle-create-btn {
+  border-top-color: rgba(255, 255, 255, 0.08);
+  color: #aaa;
+}
+
+html[dark] .yt-sm-toggle-create-btn::before,
+[dark] .yt-sm-toggle-create-btn::before {
+  color: #aaa;
+}
+
+html[dark] .yt-sm-toggle-create-btn:hover,
+[dark] .yt-sm-toggle-create-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+html[dark] .yt-sm-toggle-create-btn:hover::before,
+[dark] .yt-sm-toggle-create-btn:hover::before {
+  color: #fff;
+}
+
+/* Create form */
+.yt-sm-create-form {
+  display: flex;
+  gap: 6px;
+  padding: 12px 16px 12px;
+}
+
+.yt-sm-create-form.yt-sm-hidden {
+  display: none;
+}
+
+.yt-sm-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #0f0f0f;
+  font-family: "Roboto", "Arial", sans-serif;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.yt-sm-input:focus {
+  border-color: #065fd4;
+}
+
+.yt-sm-input::placeholder {
+  color: #909090;
+}
+
+html[dark] .yt-sm-input,
+[dark] .yt-sm-input {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+html[dark] .yt-sm-input:focus,
+[dark] .yt-sm-input:focus {
+  border-color: #3ea6ff;
+}
+
+.yt-sm-create-confirm-btn {
+  background: none;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #0f0f0f;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: "Roboto", "Arial", sans-serif;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.yt-sm-create-confirm-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  border-color: rgba(0, 0, 0, 0.35);
+}
+
+html[dark] .yt-sm-create-confirm-btn,
+[dark] .yt-sm-create-confirm-btn {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+html[dark] .yt-sm-create-confirm-btn:hover,
+[dark] .yt-sm-create-confirm-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* Footer */
+.yt-sm-footer {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+
+html[dark] .yt-sm-footer,
+[dark] .yt-sm-footer {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.yt-sm-save-btn {
+  width: 100%;
+  padding: 10px 0;
+  background: #065fd4;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  cursor: pointer;
+  font-family: "Roboto", "Arial", sans-serif;
+  transition: background 0.15s;
+}
+
+.yt-sm-save-btn:hover {
+  background: #0356c2;
+}
+
+html[dark] .yt-sm-save-btn,
+[dark] .yt-sm-save-btn {
+  background: #3ea6ff;
+  color: #0f0f0f;
+}
+
+html[dark] .yt-sm-save-btn:hover,
+[dark] .yt-sm-save-btn:hover {
+  background: #5bb8ff;
+}
