@@ -56,10 +56,18 @@ ytd-download-button-renderer {
   left: 0;
   height: 100%;
   width: calc(var(--progress, 0) * 1%);
-  background: rgba(62, 166, 255, 0.15);
+  background: rgba(62, 166, 255, 0.32);
   pointer-events: none;
   transition: width 0.5s linear;
   z-index: 0;
+}
+
+.yt-pb-info-group {
+  cursor: ew-resize;
+}
+
+.yt-pb-info-group.seeking::before {
+  transition: none;
 }
 
 /* Reset only the info group children so YouTube styles don't break sizing */
@@ -328,7 +336,7 @@ ytd-download-button-renderer {
   left: 0;
   height: 100%;
   width: calc(var(--volume, 100) * 1%);
-  background: rgba(62, 166, 255, 0.15);
+  background: rgba(62, 166, 255, 0.32);
   pointer-events: none;
   z-index: 0;
 }

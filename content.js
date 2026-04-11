@@ -449,6 +449,16 @@ function isContextValid() {
     applyVolume(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
   });
 
+  const infoGroup = row.querySelector('.yt-pb-info-group');
+  infoGroup.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    seekDrag = true;
+    infoGroup.classList.add('seeking');
+    const rect = infoGroup.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    applySeek(ratio);
+  });
+
   startTimeUpdate();
   renderPlaylistPanel(wrap, session, { isOpen: playlistPanelOpen, onNavigate: onPanelNavigate });
 }
@@ -585,6 +595,7 @@ let pendingPlaylistSession = null;
 let savedBarPos = null;
 let dragState = null;
 let volDrag = false;
+let seekDrag = false;
 let savedVolume = 1.0;
 let nativeControlsHidden = true;
 
@@ -643,6 +654,22 @@ function applyVolume(vol) {
   const iconEl = volBar.querySelector('#yt-pb-vol-icon');
   if (pctEl)  pctEl.textContent  = pct + '%';
   if (iconEl) iconEl.innerHTML   = getVolIcon(pct);
+}
+
+function applySeek(ratio) {
+  const video = document.querySelector('video');
+  if (!video || !isFinite(video.duration) || video.duration <= 0) return;
+  const targetTime = ratio * video.duration;
+  const player = document.querySelector('#movie_player');
+  if (player && typeof player.seekTo === 'function') {
+    player.seekTo(targetTime, true);
+  } else {
+    video.currentTime = targetTime;
+  }
+  const infoGroup = document.querySelector('.yt-pb-info-group');
+  infoGroup?.style.setProperty('--progress', (ratio * 100).toFixed(3));
+  const timeEl = document.getElementById('yt-pb-time');
+  if (timeEl) timeEl.textContent = `${formatTime(targetTime)} / ${formatTime(video.duration)}`;
 }
 
 function startTimeUpdate() {
@@ -887,6 +914,14 @@ document.addEventListener('mousemove', (e) => {
       applyVolume(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
     }
   }
+  if (seekDrag) {
+    const infoGroupEl = document.querySelector('.yt-pb-info-group');
+    if (!infoGroupEl) { seekDrag = false; }
+    else {
+      const rect = infoGroupEl.getBoundingClientRect();
+      applySeek(Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)));
+    }
+  }
   if (!dragState) return;
   const wrap = document.getElementById('yt-playlist-wrap');
   if (!wrap) { dragState = null; return; }
@@ -899,6 +934,10 @@ document.addEventListener('mousemove', (e) => {
 
 document.addEventListener('mouseup', () => {
   volDrag = false;
+  if (seekDrag) {
+    seekDrag = false;
+    document.querySelector('.yt-pb-info-group')?.classList.remove('seeking');
+  }
   if (!dragState) return;
   dragState = null;
   document.getElementById('yt-pb-drag')?.classList.remove('dragging');
