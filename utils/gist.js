@@ -16,6 +16,23 @@ export async function fetchGistData(token, gistId) {
   return JSON.parse(file.content);
 }
 
+export async function findExistingGist(token) {
+  let page = 1;
+  while (true) {
+    const res = await fetch(`https://api.github.com/gists?per_page=100&page=${page}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const gists = await res.json();
+    if (gists.length === 0) break;
+    const found = gists.find((g) => Object.prototype.hasOwnProperty.call(g.files, GIST_FILENAME));
+    if (found) return { id: found.id, htmlUrl: found.html_url };
+    if (gists.length < 100) break;
+    page++;
+  }
+  return null;
+}
+
 export async function createGist(token, data) {
   const res = await fetch('https://api.github.com/gists', {
     method: 'POST',

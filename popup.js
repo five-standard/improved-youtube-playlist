@@ -2,7 +2,7 @@ import { pad, formatSyncDate } from './utils/format.js';
 import { videoSortFn } from './utils/sort.js';
 import { debounce } from './utils/debounce.js';
 import { isContextValid } from './utils/context.js';
-import { fetchGistData, createGist, updateGist } from './utils/gist.js';
+import { fetchGistData, findExistingGist, createGist, updateGist } from './utils/gist.js';
 import { fetchChannelAvatar } from './utils/youtube.js';
 import { findWorkingThumbnail } from './utils/thumbnail.js';
 import { createPlaylistSection, createGroupSeparator } from './views/playlistSection.js';
@@ -461,6 +461,21 @@ async function syncData() {
         remoteGroups = remote.groups || [];
       } catch {
         currentGistId = null;
+      }
+    }
+
+    if (!currentGistId) {
+      try {
+        const existing = await findExistingGist(githubToken);
+        if (existing) {
+          currentGistId = existing.id;
+          await chrome.storage.local.set({ gistId: currentGistId, gistHtmlUrl: existing.htmlUrl });
+          const remote = await fetchGistData(githubToken, currentGistId);
+          remoteVideos = remote.savedVideos || [];
+          remoteGroups = remote.groups || [];
+        }
+      } catch {
+        // 기존 gist 탐색 실패 시 새로 생성
       }
     }
 
