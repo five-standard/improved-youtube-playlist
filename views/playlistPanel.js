@@ -10,16 +10,27 @@ export function renderPlaylistPanel(wrap, session, { isOpen, onNavigate }) {
 
   const panel = document.createElement('div');
   panel.id = 'yt-playlist-panel';
-  panel.innerHTML = videos.map((v, i) => `
-    <button class="yt-pp-item${i === currentIndex ? ' current' : ''}" data-idx="${i}">
-      <span class="yt-pp-idx">${i + 1}</span>
-      <img class="yt-pp-thumb" src="${esc(thumbOf(v))}" alt="" loading="lazy">
-      <div class="yt-pp-info">
-        <span class="yt-pp-title">${esc(v.title || v.videoId)}</span>
-        ${v.channelName ? `<span class="yt-pp-channel">${esc(v.channelName)}</span>` : ''}
-      </div>
-    </button>
-  `).join('');
+
+  const hasFolderNames = videos.some(v => v.folderName);
+  let html = '';
+  let lastFolder = undefined;
+  videos.forEach((v, i) => {
+    if (hasFolderNames && v.folderName !== lastFolder) {
+      html += `<div class="yt-pp-folder-sep">${esc(v.folderName || '루트')}</div>`;
+      lastFolder = v.folderName;
+    }
+    html += `
+      <button class="yt-pp-item${i === currentIndex ? ' current' : ''}" data-idx="${i}">
+        <span class="yt-pp-idx">${i + 1}</span>
+        <img class="yt-pp-thumb" src="${esc(thumbOf(v))}" alt="" loading="lazy">
+        <div class="yt-pp-info">
+          <span class="yt-pp-title">${esc(v.title || v.videoId)}</span>
+          ${v.channelName ? `<span class="yt-pp-channel">${esc(v.channelName)}</span>` : ''}
+        </div>
+      </button>
+    `;
+  });
+  panel.innerHTML = html;
 
   panel.querySelectorAll('.yt-pp-thumb').forEach((img, i) => {
     attachThumbFallback(img, videos[i].videoId);

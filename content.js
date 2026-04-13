@@ -21,6 +21,39 @@ function getVolIcon(pct) {
 const THUMB_QUALITIES = ['maxresdefault', 'sddefault', 'hqdefault', 'mqdefault', 'default'];
 const THUMB_PLACEHOLDER = `data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='90'><rect fill='%23333'/><text x='50%25' y='50%25' fill='%23666' font-size='12' text-anchor='middle' dy='.3em'>No Thumbnail</text></svg>`;
 
+// Storage compression helpers
+const YT_AVATAR_PFX = 'https://yt3.ggpht.com/';
+// Thumbnail quality enum: hq=1, mq=2, sd=3, max=4
+const YT_THUMB_CODES        = { hqdefault: 1, mqdefault: 2, sddefault: 3, maxresdefault: 4 };
+const YT_THUMB_FILES        = { 1: 'hqdefault', 2: 'mqdefault', 3: 'sddefault', 4: 'maxresdefault' };
+const YT_THUMB_LEGACY_CODES = { hq: 1, mq: 2, sd: 3, max: 4 };  // backward compat: old string → new number
+const YT_THUMB_LEGACY_FILES = { hq: 'hqdefault', mq: 'mqdefault', sd: 'sddefault', max: 'maxresdefault' };
+
+function compressAvatar(url) {
+  return (url || '').startsWith(YT_AVATAR_PFX) ? url.slice(YT_AVATAR_PFX.length) : (url || '');
+}
+function expandAvatar(stored) {
+  if (!stored) return '';
+  return stored.startsWith('http') ? stored : YT_AVATAR_PFX + stored;
+}
+function compressThumb(url, videoId) {
+  if (url == null || url === '') return null;
+  if (typeof url === 'number') return url;                           // already a numeric code
+  if (YT_THUMB_LEGACY_CODES[url] != null) return YT_THUMB_LEGACY_CODES[url]; // old string code → number
+  const pfx = `https://img.youtube.com/vi/${videoId}/`;
+  if (url.startsWith(pfx)) {
+    const q = url.slice(pfx.length).replace('.jpg', '');
+    const code = YT_THUMB_CODES[q];
+    return code ?? url;
+  }
+  return url;
+}
+function expandThumb(stored, videoId) {
+  if (stored == null || stored === '') return `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+  const file = YT_THUMB_FILES[stored] || YT_THUMB_LEGACY_FILES[stored];
+  return file ? `https://img.youtube.com/vi/${videoId}/${file}.jpg` : stored;
+}
+
 function attachThumbFallback(img, videoId) {
   img.onerror = function () {
     const failed = this.src;
@@ -51,113 +84,189 @@ function isContextValid() {
   return !!chrome.runtime?.id;
 }
 
- async function openSaveModal(btn, info, { createGroup, saveVideoToGroup, onSaved }) {
+async function openSaveModal(btn, info, { saveToFolders, onSaved }) {
   document.getElementById('yt-save-modal')?.remove();
 
-  let groups;
+  const SVG_FOLDER        = '<path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>';
+  const SVG_CHECK         = '<path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>';
+  const SVG_CHEVRON_RIGHT = '<path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>';
+  const SVG_CHEVRON_DOWN  = '<path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/>';
+
+  function mkSvg(path, size) {
+    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor">${path}</svg>`;
+  }
+
+  let groups, savedVideos;
   try {
-    ({ groups = [] } = await chrome.storage.local.get('groups'));
+    ({ groups = [], savedVideos = [] } = await chrome.storage.local.get(['groups', 'savedVideos']));
   } catch { return; }
-  let currentGroups = [...groups];
-  let selectedGroupId = null;
+
+  const activeFolders = groups.filter(g => !g.deleted && g.type !== 'separator');
+  const activeVideos  = savedVideos.filter(v => !v.deleted);
+  const existingEntry = activeVideos.find(v => v.videoId === info.videoId);
+  const alreadySavedIn = (() => {
+    if (!existingEntry) return new Set();
+    const raw = Array.isArray(existingEntry.groupId) ? existingEntry.groupId : [existingEntry.groupId ?? null];
+    return new Set(raw.length === 0 ? [null] : raw);
+  })();
+
+  const selectedIds = new Set();
+  const expandedIds = new Set();
 
   const overlay = document.createElement('div');
   overlay.id = 'yt-save-modal';
   overlay.innerHTML = `
     <div class="yt-sm-dialog">
       <div class="yt-sm-header">
-        <span>재생목록 선택</span>
+        <span>폴더 선택</span>
         <button class="yt-sm-close-btn" aria-label="닫기">✕</button>
       </div>
-      <div class="yt-sm-body">
-        <div class="yt-sm-groups" id="yt-sm-group-list"></div>
-        <button class="yt-sm-toggle-create-btn" id="yt-sm-toggle-create">재생목록 생성</button>
-        <div class="yt-sm-create-form yt-sm-hidden" id="yt-sm-create-form">
-          <input class="yt-sm-input" id="yt-sm-new-input" placeholder="재생목록 이름...">
-          <button class="yt-sm-create-confirm-btn" id="yt-sm-create-confirm">만들기</button>
-        </div>
+      <div class="yt-sm-body" id="yt-sm-tree"></div>
+      <div class="yt-sm-new-folder-wrap yt-sm-hidden" id="yt-sm-new-folder-wrap">
+        <input class="yt-sm-input" id="yt-sm-folder-input" placeholder="새 폴더 이름...">
+        <button class="yt-sm-create-confirm-btn" id="yt-sm-folder-confirm">만들기</button>
       </div>
       <div class="yt-sm-footer">
+        <button class="yt-sm-toggle-create-btn" id="yt-sm-new-folder-btn">+ 새 폴더</button>
         <button class="yt-sm-save-btn" id="yt-sm-save-btn">저장</button>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
 
-  function renderGroups() {
-    const list = overlay.querySelector('#yt-sm-group-list');
-    const toggleBtn = overlay.querySelector('#yt-sm-toggle-create');
+  const tree          = overlay.querySelector('#yt-sm-tree');
+  const newFolderWrap = overlay.querySelector('#yt-sm-new-folder-wrap');
+  const folderInput   = overlay.querySelector('#yt-sm-folder-input');
 
-    if (currentGroups.length === 0) {
-      list.innerHTML = `
-        <p class="yt-sm-empty">
-          저장된 재생목록이 없습니다.
-          <button class="yt-sm-inline-link" id="yt-sm-inline-link">재생목록 만들기</button>
-        </p>
-      `;
-      toggleBtn.style.display = 'none';
-      list.querySelector('#yt-sm-inline-link').addEventListener('click', toggleCreate);
-    } else {
-      const selectableGroups = currentGroups.filter((g) => g.type !== 'separator');
-      list.innerHTML = currentGroups.map((g) => g.type === 'separator'
-        ? `<div class="yt-sm-separator">━━━━━━━━━━━━━━</div>`
-        : `<button class="yt-sm-group-item${selectedGroupId === g.id ? ' selected' : ''}" data-group-id="${esc(g.id)}">
-            <span class="yt-sm-check-icon">${selectedGroupId === g.id ? '✓' : ''}</span>
-            <span class="yt-sm-group-name">${esc(g.name)}</span>
-          </button>`
-      ).join('');
-      toggleBtn.style.display = selectableGroups.length > 0 ? '' : 'none';
-      list.querySelectorAll('.yt-sm-group-item').forEach((item) => {
-        item.addEventListener('click', () => {
-          const gid = item.dataset.groupId;
-          selectedGroupId = selectedGroupId === gid ? null : gid;
-          list.querySelectorAll('.yt-sm-group-item').forEach((el) => {
-            const selected = el.dataset.groupId === selectedGroupId;
-            el.classList.toggle('selected', selected);
-            el.querySelector('.yt-sm-check-icon').textContent = selected ? '✓' : '';
-          });
-        });
-      });
-    }
+  const childFolders = (parentId) =>
+    activeFolders.filter(f => (f.parentId || null) === parentId);
+  const videosIn = (folderId) =>
+    activeVideos.filter(v => {
+      const raw  = Array.isArray(v.groupId) ? v.groupId : [v.groupId ?? null];
+      const gids = raw.length === 0 ? [null] : raw;
+      return gids.includes(folderId) && v.videoId !== info.videoId;
+    });
+  const hasContent = (folderId) =>
+    childFolders(folderId).length > 0 || videosIn(folderId).length > 0;
+
+  function renderTree() {
+    tree.innerHTML = '';
+    appendFolderRow(null, '루트', 0);
+    if (expandedIds.has(null)) appendChildren(null, 1);
   }
 
-  let createFormVisible = false;
-  function toggleCreate() {
-    createFormVisible = !createFormVisible;
-    overlay.querySelector('#yt-sm-create-form').classList.toggle('yt-sm-hidden', !createFormVisible);
-    if (createFormVisible) overlay.querySelector('#yt-sm-new-input').focus();
+  function appendFolderRow(folderId, name, depth) {
+    const isSelected     = selectedIds.has(folderId);
+    const isExpanded     = expandedIds.has(folderId);
+    const isAlreadySaved = alreadySavedIn.has(folderId);
+    const canExpand      = hasContent(folderId);
+
+    const row = document.createElement('div');
+    row.className = 'yt-sm-folder-row' + (isSelected ? ' selected' : '');
+    row.style.paddingLeft = (depth * 20 + 10) + 'px';
+
+    const chevron = document.createElement('span');
+    chevron.className = 'yt-sm-chevron';
+    if (canExpand) {
+      chevron.innerHTML = mkSvg(isExpanded ? SVG_CHEVRON_DOWN : SVG_CHEVRON_RIGHT, 14);
+      chevron.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (expandedIds.has(folderId)) expandedIds.delete(folderId);
+        else expandedIds.add(folderId);
+        renderTree();
+      });
+    }
+
+    const folderIcon = document.createElement('span');
+    folderIcon.className = 'yt-sm-folder-icon';
+    folderIcon.innerHTML = mkSvg(SVG_FOLDER, 15);
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'yt-sm-folder-name';
+    nameEl.textContent = name;
+
+    const checkEl = document.createElement('span');
+    checkEl.className = 'yt-sm-check';
+    if (isSelected) checkEl.innerHTML = mkSvg(SVG_CHECK, 14);
+
+    row.appendChild(chevron);
+    row.appendChild(folderIcon);
+    row.appendChild(nameEl);
+
+    if (isAlreadySaved) {
+      const badge = document.createElement('span');
+      badge.className = 'yt-sm-saved-badge';
+      badge.textContent = '저장됨';
+      row.appendChild(badge);
+    }
+
+    row.appendChild(checkEl);
+
+    row.addEventListener('click', function() {
+      if (selectedIds.has(folderId)) selectedIds.delete(folderId);
+      else selectedIds.add(folderId);
+      renderTree();
+    });
+
+    tree.appendChild(row);
+  }
+
+  function appendChildren(parentId, depth) {
+    childFolders(parentId).forEach(function(folder) {
+      appendFolderRow(folder.id, folder.name, depth);
+      if (expandedIds.has(folder.id)) appendChildren(folder.id, depth + 1);
+    });
+    videosIn(parentId).forEach(function(video) {
+      const thumb = video.thumbnail || ('https://img.youtube.com/vi/' + video.videoId + '/mqdefault.jpg');
+      const row = document.createElement('div');
+      row.className = 'yt-sm-video-row';
+      row.style.paddingLeft = (depth * 20 + 10) + 'px';
+      row.innerHTML = '<img class="yt-sm-video-thumb" src="' + esc(thumb) + '" alt=""><span class="yt-sm-video-title">' + esc(video.title) + '</span>';
+      tree.appendChild(row);
+    });
   }
 
   const close = () => overlay.remove();
   overlay.querySelector('.yt-sm-close-btn').addEventListener('click', close);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-  overlay.querySelector('#yt-sm-toggle-create').addEventListener('click', toggleCreate);
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
 
-  overlay.querySelector('#yt-sm-create-confirm').addEventListener('click', async () => {
-    const input = overlay.querySelector('#yt-sm-new-input');
-    const name = input.value.trim();
-    if (!name) { input.focus(); return; }
-    const groupId = await createGroup(name);
-    const { groups: updated = [] } = await chrome.storage.local.get('groups');
-    currentGroups = updated;
-    selectedGroupId = groupId;
-    input.value = '';
-    createFormVisible = false;
-    overlay.querySelector('#yt-sm-create-form').classList.add('yt-sm-hidden');
-    renderGroups();
-  });
-
-  overlay.querySelector('#yt-sm-new-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') overlay.querySelector('#yt-sm-create-confirm').click();
-  });
-
-  overlay.querySelector('#yt-sm-save-btn').addEventListener('click', async () => {
-    await saveVideoToGroup(info, selectedGroupId);
+  overlay.querySelector('#yt-sm-save-btn').addEventListener('click', async function() {
+    await saveToFolders(info, [...selectedIds]);
     close();
     onSaved(btn);
   });
 
-  renderGroups();
+  overlay.querySelector('#yt-sm-new-folder-btn').addEventListener('click', function() {
+    const hidden = newFolderWrap.classList.toggle('yt-sm-hidden');
+    if (!hidden) folderInput.focus();
+  });
+
+  async function confirmNewFolder() {
+    const name = folderInput.value.trim();
+    if (!name) { folderInput.focus(); return; }
+    const { groups: current = [] } = await chrome.storage.local.get('groups');
+    const newFolder = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      name: name,
+      parentId: null,
+      createdAt: Date.now(),
+    };
+    current.push(newFolder);
+    await chrome.storage.local.set({ groups: current });
+    activeFolders.push(newFolder);
+    selectedIds.add(newFolder.id);
+    folderInput.value = '';
+    newFolderWrap.classList.add('yt-sm-hidden');
+    renderTree();
+  }
+
+  overlay.querySelector('#yt-sm-folder-confirm').addEventListener('click', confirmNewFolder);
+  folderInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter')  confirmNewFolder();
+    if (e.key === 'Escape') newFolderWrap.classList.add('yt-sm-hidden');
+  });
+
+  renderTree();
 }
 
  function renderPlaylistPanel(wrap, session, { isOpen, onNavigate }) {
@@ -169,16 +278,27 @@ function isContextValid() {
 
   const panel = document.createElement('div');
   panel.id = 'yt-playlist-panel';
-  panel.innerHTML = videos.map((v, i) => `
-    <button class="yt-pp-item${i === currentIndex ? ' current' : ''}" data-idx="${i}">
-      <span class="yt-pp-idx">${i + 1}</span>
-      <img class="yt-pp-thumb" src="${esc(thumbOf(v))}" alt="" loading="lazy">
-      <div class="yt-pp-info">
-        <span class="yt-pp-title">${esc(v.title || v.videoId)}</span>
-        ${v.channelName ? `<span class="yt-pp-channel">${esc(v.channelName)}</span>` : ''}
-      </div>
-    </button>
-  `).join('');
+
+  const hasFolderNames = videos.some(v => v.folderName);
+  let html = '';
+  let lastFolder = undefined;
+  videos.forEach((v, i) => {
+    if (hasFolderNames && v.folderName !== lastFolder) {
+      html += `<div class="yt-pp-folder-sep">${esc(v.folderName || '루트')}</div>`;
+      lastFolder = v.folderName;
+    }
+    html += `
+      <button class="yt-pp-item${i === currentIndex ? ' current' : ''}" data-idx="${i}">
+        <span class="yt-pp-idx">${i + 1}</span>
+        <img class="yt-pp-thumb" src="${esc(thumbOf(v))}" alt="" loading="lazy">
+        <div class="yt-pp-info">
+          <span class="yt-pp-title">${esc(v.title || v.videoId)}</span>
+          ${v.channelName ? `<span class="yt-pp-channel">${esc(v.channelName)}</span>` : ''}
+        </div>
+      </button>
+    `;
+  });
+  panel.innerHTML = html;
 
   panel.querySelectorAll('.yt-pp-thumb').forEach((img, i) => {
     attachThumbFallback(img, videos[i].videoId);
@@ -464,6 +584,114 @@ function isContextValid() {
 }
 
 
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.action === 'yt-navigate' && msg.url) {
+    // Prime pendingPlaylistSession before navigating.
+    // storage.onChanged only calls checkPlaylistSession when yt-playlist-wrap already
+    // exists, so on first start the bar would never appear via that path.
+    // Reading the session here and setting pendingPlaylistSession ensures
+    // yt-navigate-finish (which takes the `else` branch because ytNavigate pre-sets
+    // lastVideoId) can render the bar correctly.
+    chrome.storage.local.get('playlistSession')
+      .then(({ playlistSession }) => {
+        if (playlistSession) pendingPlaylistSession = playlistSession;
+        ytNavigate(msg.url);
+      })
+      .catch(() => ytNavigate(msg.url));
+    return;
+  }
+
+  // ── Popup controller actions ────────────────────────────────────────────
+  if (msg.action === 'popup-get-state') {
+    const video  = document.querySelector('video');
+    const player = document.querySelector('#movie_player');
+    const paused = !video || video.paused || video.ended;
+    const state  = player?.getPlayerState?.() ?? (paused ? 2 : 1);
+    sendResponse({
+      currentTime: video ? (isFinite(video.currentTime) ? video.currentTime : 0) : 0,
+      duration:    video ? (isFinite(video.duration)    ? video.duration    : 0) : 0,
+      paused,
+      playerState: state,
+      volume: savedVolume,
+    });
+    return true; // keep channel open for async sendResponse
+  }
+
+  if (msg.action === 'popup-play-pause') {
+    const player = document.querySelector('#movie_player');
+    const video  = document.querySelector('video');
+    if (player && typeof player.pauseVideo === 'function') {
+      const s = player.getPlayerState?.() ?? -1;
+      if (s === 1) player.pauseVideo(); else player.playVideo();
+    } else if (video) {
+      if (video.paused) video.play(); else video.pause();
+    }
+    return;
+  }
+
+  if (msg.action === 'popup-prev') { navigateInPlaylist(-1); return; }
+  if (msg.action === 'popup-next') { navigateInPlaylist(1);  return; }
+
+  if (msg.action === 'popup-rewind') {
+    const player = document.querySelector('#movie_player');
+    const video  = document.querySelector('video');
+    if (player && typeof player.seekTo === 'function')
+      player.seekTo(Math.max(0, (player.getCurrentTime?.() ?? 0) - 10), true);
+    else if (video)
+      video.currentTime = Math.max(0, video.currentTime - 10);
+    return;
+  }
+
+  if (msg.action === 'popup-forward') {
+    const player = document.querySelector('#movie_player');
+    const video  = document.querySelector('video');
+    if (player && typeof player.seekTo === 'function')
+      player.seekTo((player.getCurrentTime?.() ?? 0) + 10, true);
+    else if (video)
+      video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 10);
+    return;
+  }
+
+  if (msg.action === 'popup-seek' && msg.ratio != null) {
+    applySeek(msg.ratio);
+    return;
+  }
+
+  if (msg.action === 'popup-stop') {
+    chrome.storage.local.remove('playlistSession').catch(() => {});
+    removePlaylistBar();
+    return;
+  }
+
+  if (msg.action === 'popup-repeat') {
+    chrome.storage.local.get('playlistSession').then(({ playlistSession }) => {
+      if (!playlistSession) return;
+      const newMode    = ((playlistSession.repeatMode ?? 0) + 1) % 3;
+      const newSession = { ...playlistSession, repeatMode: newMode };
+      chrome.storage.local.set({ playlistSession: newSession });
+    }).catch(() => {});
+    return;
+  }
+
+  if (msg.action === 'popup-volume' && msg.volume != null) {
+    applyVolume(msg.volume);
+    return;
+  }
+
+  if (msg.action === 'popup-navigate-to' && msg.index != null) {
+    chrome.storage.local.get('playlistSession').then(async ({ playlistSession }) => {
+      if (!playlistSession) return;
+      const idx = msg.index;
+      if (idx < 0 || idx >= playlistSession.videos.length) return;
+      const newSession = { ...playlistSession, currentIndex: idx };
+      await chrome.storage.local.set({ playlistSession: newSession });
+      pendingPlaylistSession = newSession;
+      ytNavigate(playlistSession.videos[idx].url);
+    }).catch(() => {});
+    return;
+  }
+});
+
 window.addEventListener('unhandledrejection', (e) => {
   if (e.reason?.message?.includes('Extension context invalidated')) e.preventDefault();
 });
@@ -510,6 +738,11 @@ function getVideoInfo() {
     } catch {}
   }
 
+  const videoEl = document.querySelector('video.html5-main-video');
+  const duration = (videoEl && isFinite(videoEl.duration) && videoEl.duration > 0)
+    ? Math.round(videoEl.duration)
+    : null;
+
   return {
     videoId,
     url: `https://www.youtube.com/watch?v=${videoId}`,
@@ -519,6 +752,7 @@ function getVideoInfo() {
     channelUrl,
     channelAvatar,
     uploadDate,
+    duration,
   };
 }
 
@@ -562,13 +796,53 @@ async function createGroup(name) {
   } catch { return null; }
 }
 
-async function saveVideoToGroup(info, groupId) {
+/**
+ * Saves the video to each folder in groupIds.
+ * If groupIds is empty, saves to root (groupId: null).
+ * Skips any folder where this videoId is already saved.
+ */
+async function saveVideoToFolders(info, groupIds) {
   if (!isContextValid()) return;
   try {
-    const { savedVideos = [] } = await chrome.storage.local.get('savedVideos');
-    if (savedVideos.some((v) => v.videoId === info.videoId)) return;
-    savedVideos.push({ ...info, tags: [], groupId: groupId || null, savedAt: Date.now() });
-    await chrome.storage.local.set({ savedVideos });
+    const { savedVideos = [], channels = [] } = await chrome.storage.local.get(['savedVideos', 'channels']);
+    const targets = groupIds.length > 0 ? groupIds : [null];
+
+    // Find or create channel entry
+    let channelId = null;
+    if (info.channelName) {
+      const av = compressAvatar(info.channelAvatar);
+      let ch = channels.find((c) => c.name === info.channelName);
+      if (ch) {
+        if (av && !ch.avatar) ch.avatar = av;
+        channelId = ch.id;
+      } else {
+        channelId = channels.length ? Math.max(...channels.map((c) => c.id)) + 1 : 0;
+        channels.push({ id: channelId, name: info.channelName, avatar: av });
+      }
+    }
+
+    const thumb = compressThumb(info.thumbnail, info.videoId);
+
+    const existing = savedVideos.find((v) => v.videoId === info.videoId);
+    if (existing) {
+      // Merge new groupIds into existing entry's array
+      const rawGids = Array.isArray(existing.groupId) ? existing.groupId : [existing.groupId ?? null];
+      const gidSet = new Set(rawGids.length === 0 ? [null] : rawGids);
+      targets.forEach((gid) => gidSet.add(gid ?? null));
+      existing.groupId = [...gidSet];
+    } else {
+      const entry = {
+        videoId: info.videoId,
+        title:   info.title,
+        groupId: targets.map((gid) => gid ?? null),
+        savedAt: Date.now(),
+      };
+      if (thumb)             entry.thumbnail = thumb;
+      if (info.duration)     entry.duration  = info.duration;
+      if (channelId != null) entry.channelId = channelId;
+      savedVideos.push(entry);
+    }
+    await chrome.storage.local.set({ savedVideos, channels });
   } catch {}
 }
 
@@ -579,12 +853,13 @@ async function handleSave(btn) {
   try {
     const { savedVideos = [] } = await chrome.storage.local.get('savedVideos');
     if (savedVideos.some((v) => v.videoId === info.videoId)) {
+      // Delete ALL copies across all folders at once
       const updated = savedVideos.filter((v) => v.videoId !== info.videoId);
       await chrome.storage.local.set({ savedVideos: updated });
       await updateButtonState(btn);
       return;
     }
-    openSaveModal(btn, info, { createGroup, saveVideoToGroup, onSaved: updateButtonState });
+    openSaveModal(btn, info, { saveToFolders: saveVideoToFolders, onSaved: updateButtonState });
   } catch {}
 }
 
@@ -813,16 +1088,20 @@ function renderBar(session) {
   updateFsOverlay();
 }
 
-async function checkPlaylistSession() {
+// storageTriggered=true: called from storage.onChanged (page hasn't changed yet).
+// In this case we must NOT reconcile currentIndex against the current page — doing so
+// lets the old video's ended-handler navigate the new session to the wrong track while
+// popup's yt-navigate is already in flight, causing the rapid-cycling conflict.
+async function checkPlaylistSession(storageTriggered = false) {
   if (!isContextValid()) return;
   try {
-    const { playlistSession, savedVideos = [] } = await chrome.storage.local.get(['playlistSession', 'savedVideos']);
+    const { playlistSession, savedVideos = [], channels = [] } = await chrome.storage.local.get(['playlistSession', 'savedVideos', 'channels']);
     if (!playlistSession) { removePlaylistBar(); return; }
 
     const videoMap = new Map(savedVideos.map((v) => [v.videoId, v]));
     const needsEnrich = playlistSession.videos.some((v) => {
       if (v.channelName === undefined || v.thumbnail === undefined) return true;
-      if (!v.channelAvatar && videoMap.get(v.videoId)?.channelAvatar) return true;
+      if (!v.channelAvatar && videoMap.has(v.videoId)) return true;
       return false;
     });
 
@@ -832,15 +1111,51 @@ async function checkPlaylistSession() {
         ...playlistSession,
         videos: playlistSession.videos.map((v) => {
           const stored = videoMap.get(v.videoId);
-          return {
-            ...v,
-            channelName:   v.channelName   !== undefined ? v.channelName   : (stored?.channelName   ?? null),
-            thumbnail:     v.thumbnail     !== undefined ? v.thumbnail     : (stored?.thumbnail     ?? null),
-            channelAvatar: v.channelAvatar || (stored?.channelAvatar ?? null),
-          };
+          let channelName   = v.channelName   !== undefined ? v.channelName   : null;
+          let channelAvatar = v.channelAvatar || null;
+          let thumbnail     = v.thumbnail     !== undefined ? v.thumbnail     : null;
+
+          if (stored) {
+            // Resolve channel from compressed format
+            if (stored.channelId != null) {
+              const ch = channels.find((c) => c.id === stored.channelId);
+              if (ch) {
+                if (channelName   == null) channelName   = ch.name;
+                if (!channelAvatar)        channelAvatar = expandAvatar(ch.avatar);
+              }
+            } else {
+              // Legacy uncompressed format fallback
+              if (channelName   == null) channelName   = stored.channelName   ?? null;
+              if (!channelAvatar)        channelAvatar = stored.channelAvatar ?? null;
+            }
+            // Expand compressed thumbnail
+            if (thumbnail == null) thumbnail = expandThumb(stored.thumbnail, v.videoId);
+          }
+
+          return { ...v, channelName, thumbnail, channelAvatar };
         }),
       };
       await chrome.storage.local.set({ playlistSession: activeSession });
+    }
+
+    // When triggered by a storage change (not a page navigation), skip the
+    // currentIndex reconciliation entirely.  The old ended-handler must also be
+    // torn down immediately so it can't fire against the incoming session.
+    if (storageTriggered) {
+      const videoEl = document.querySelector('video');
+      if (videoEl && videoEndedHandler) {
+        videoEl.removeEventListener('ended', videoEndedHandler);
+        videoEndedHandler = null;
+      }
+      if (document.getElementById('yt-playlist-wrap')) {
+        // Bar already visible — just refresh it in-place (handles repeat-mode changes etc.)
+        renderBar(activeSession);
+        attachVideoEndListener();
+      }
+      // If bar doesn't exist yet, pendingPlaylistSession is set by the yt-navigate
+      // message handler before ytNavigate() is called, so yt-navigate-finish handles
+      // first-render there. Nothing to do here.
+      return;
     }
 
     const videoId = getVideoId();
@@ -961,13 +1276,21 @@ document.addEventListener('mousedown', (e) => {
 
 chrome.storage.onChanged.addListener((changes) => {
   if (!isContextValid()) return;
-  if (changes.savedVideos && document.getElementById('yt-playlist-wrap')) checkPlaylistSession();
+  if ((changes.savedVideos || changes.playlistSession) && document.getElementById('yt-playlist-wrap'))
+    checkPlaylistSession(true);
 });
 
 window.addEventListener('yt-navigate-finish', () => {
   if (!window.location.pathname.startsWith('/watch')) {
     lastVideoId = null;
     removeButton();
+    // If the playlist bar was shown on this tab, this is the active playlist tab.
+    // Clear the session from storage so the popup controller also disappears.
+    if (document.getElementById('yt-playlist-wrap')) {
+      videoEndedHandler = null;   // stale handler — video element is being replaced
+      pendingPlaylistSession = null;
+      chrome.storage.local.remove('playlistSession').catch(() => {});
+    }
     removePlaylistBar();
     if (checkInterval) { clearInterval(checkInterval); checkInterval = null; }
     return;

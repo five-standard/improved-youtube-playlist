@@ -3,7 +3,7 @@
   "name": "Youtube 외장 재생목록",
   "version": "1.0.0",
   "description": "구글 개놈들아 재생목록 UI 속도좀 개선해라;;",
-  "permissions": ["storage"],
+  "permissions": ["storage", "tabs"],
   "host_permissions": ["https://www.youtube.com/*", "https://api.github.com/*", "https://gist.githubusercontent.com/*"],
   "action": {
     "default_popup": "popup.html",
