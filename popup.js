@@ -749,7 +749,7 @@ function renderMillerColumns() {
         onAddVideo: (folderId) => showAddVideoDialog(folderId),
         onMoveVideo: async (videoId, sourceFolderId, targetFolderId) => {
           const video = allVideos.find((v) => v.videoId === videoId);
-          if (!video || video.groupId.has(targetFolderId)) return;
+          if (!video || sourceFolderId === targetFolderId) return;
           video.groupId.delete(sourceFolderId);
           video.groupId.add(targetFolderId);
           if (video.groupId.size === 0) video.groupId.add(null);
@@ -815,7 +815,7 @@ function renderMillerColumns() {
           let changed = false;
           for (const vid of videoIds) {
             const video = allVideos.find((v) => v.videoId === vid);
-            if (video && !video.groupId.has(targetFolderId)) {
+            if (video && sourceFolderId !== targetFolderId) {
               video.groupId.delete(sourceFolderId);
               video.groupId.add(targetFolderId);
               if (video.groupId.size === 0) video.groupId.add(null);

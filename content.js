@@ -96,9 +96,9 @@ async function openSaveModal(btn, info, { saveToFolders, onSaved }) {
     return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="currentColor">${path}</svg>`;
   }
 
-  let groups, savedVideos;
+  let groups, savedVideos, channels;
   try {
-    ({ groups = [], savedVideos = [] } = await chrome.storage.local.get(['groups', 'savedVideos']));
+    ({ groups = [], savedVideos = [], channels = [] } = await chrome.storage.local.get(['groups', 'savedVideos', 'channels']));
   } catch { return; }
 
   const activeFolders = groups.filter(g => !g.deleted && g.type !== 'separator');
@@ -110,8 +110,33 @@ async function openSaveModal(btn, info, { saveToFolders, onSaved }) {
     return new Set(raw.length === 0 ? [null] : raw);
   })();
 
-  const selectedIds = new Set();
+  const selectedIds = new Set(alreadySavedIn); // pre-select already-saved folders
+
+  // Auto-expand the path to each already-saved folder so they're visible on open
   const expandedIds = new Set();
+  for (const savedId of alreadySavedIn) {
+    if (savedId === null) {
+      expandedIds.add(null); // saved in root → expand root
+      continue;
+    }
+    let cur = savedId;
+    const seen = new Set();
+    while (cur !== null) {
+      if (seen.has(cur)) break;
+      seen.add(cur);
+      const folder = activeFolders.find(function(f) { return f.id === cur; });
+      if (!folder) break;
+      const parentId = folder.parentId ?? null;
+      expandedIds.add(parentId); // expand parent to make this folder visible
+      cur = parentId;
+    }
+  }
+
+  const durationHtml = info.duration
+    ? '<span class="yt-sm-preview-duration">' + esc(formatTime(info.duration)) + '</span>'
+    : '';
+  const metaHtml = [info.channelName ? esc(info.channelName) : '', durationHtml]
+    .filter(Boolean).join('<span class="yt-sm-preview-sep">·</span>');
 
   const overlay = document.createElement('div');
   overlay.id = 'yt-save-modal';
@@ -120,6 +145,15 @@ async function openSaveModal(btn, info, { saveToFolders, onSaved }) {
       <div class="yt-sm-header">
         <span>폴더 선택</span>
         <button class="yt-sm-close-btn" aria-label="닫기">✕</button>
+      </div>
+      <div class="yt-sm-preview">
+        <div class="yt-sm-preview-thumb-wrap">
+          <img class="yt-sm-preview-thumb" src="${esc(info.thumbnail)}" alt="">
+        </div>
+        <div class="yt-sm-preview-info">
+          <span class="yt-sm-preview-title">${esc(info.title)}</span>
+          ${metaHtml ? '<div class="yt-sm-preview-meta">' + metaHtml + '</div>' : ''}
+        </div>
       </div>
       <div class="yt-sm-body" id="yt-sm-tree"></div>
       <div class="yt-sm-new-folder-wrap yt-sm-hidden" id="yt-sm-new-folder-wrap">
@@ -133,6 +167,7 @@ async function openSaveModal(btn, info, { saveToFolders, onSaved }) {
     </div>
   `;
   document.body.appendChild(overlay);
+  attachThumbFallback(overlay.querySelector('.yt-sm-preview-thumb'), info.videoId);
 
   const tree          = overlay.querySelector('#yt-sm-tree');
   const newFolderWrap = overlay.querySelector('#yt-sm-new-folder-wrap');
@@ -217,11 +252,23 @@ async function openSaveModal(btn, info, { saveToFolders, onSaved }) {
       if (expandedIds.has(folder.id)) appendChildren(folder.id, depth + 1);
     });
     videosIn(parentId).forEach(function(video) {
-      const thumb = video.thumbnail || ('https://img.youtube.com/vi/' + video.videoId + '/mqdefault.jpg');
+      const thumb = expandThumb(video.thumbnail, video.videoId);
+      const ch = video.channelId != null ? channels.find(function(c) { return c.id === video.channelId; }) : null;
+      const channelName = ch ? ch.name : (video.channelName || '');
+      const metaParts = [
+        channelName ? esc(channelName) : '',
+        video.duration ? esc(formatTime(video.duration)) : '',
+      ].filter(Boolean);
       const row = document.createElement('div');
       row.className = 'yt-sm-video-row';
       row.style.paddingLeft = (depth * 20 + 10) + 'px';
-      row.innerHTML = '<img class="yt-sm-video-thumb" src="' + esc(thumb) + '" alt=""><span class="yt-sm-video-title">' + esc(video.title) + '</span>';
+      row.innerHTML =
+        '<img class="yt-sm-video-thumb" src="' + esc(thumb) + '" alt="">' +
+        '<div class="yt-sm-video-info">' +
+          '<span class="yt-sm-video-title">' + esc(video.title) + '</span>' +
+          (metaParts.length ? '<span class="yt-sm-video-meta">' + metaParts.join(' · ') + '</span>' : '') +
+        '</div>';
+      attachThumbFallback(row.querySelector('.yt-sm-video-thumb'), video.videoId);
       tree.appendChild(row);
     });
   }
@@ -801,11 +848,16 @@ async function createGroup(name) {
  * If groupIds is empty, saves to root (groupId: null).
  * Skips any folder where this videoId is already saved.
  */
-async function saveVideoToFolders(info, groupIds) {
+/**
+ * Replaces a video's folder membership with the given groupIds.
+ * - groupIds empty: removes the video entirely (if it exists).
+ * - groupIds non-empty: creates or updates the video entry with exactly these folders.
+ */
+async function setVideoFolders(info, groupIds) {
   if (!isContextValid()) return;
   try {
     const { savedVideos = [], channels = [] } = await chrome.storage.local.get(['savedVideos', 'channels']);
-    const targets = groupIds.length > 0 ? groupIds : [null];
+    const normalized = groupIds.map((gid) => gid ?? null);
 
     // Find or create channel entry
     let channelId = null;
@@ -821,20 +873,26 @@ async function saveVideoToFolders(info, groupIds) {
       }
     }
 
-    const thumb = compressThumb(info.thumbnail, info.videoId);
-
     const existing = savedVideos.find((v) => v.videoId === info.videoId);
+
+    if (normalized.length === 0) {
+      // No folders selected → remove video entirely
+      if (existing) {
+        await chrome.storage.local.set({ savedVideos: savedVideos.filter((v) => v.videoId !== info.videoId) });
+      }
+      return;
+    }
+
     if (existing) {
-      // Merge new groupIds into existing entry's array
-      const rawGids = Array.isArray(existing.groupId) ? existing.groupId : [existing.groupId ?? null];
-      const gidSet = new Set(rawGids.length === 0 ? [null] : rawGids);
-      targets.forEach((gid) => gidSet.add(gid ?? null));
-      existing.groupId = [...gidSet];
+      // Replace folder membership
+      existing.groupId = normalized;
+      if (channelId != null && existing.channelId == null) existing.channelId = channelId;
     } else {
+      const thumb = compressThumb(info.thumbnail, info.videoId);
       const entry = {
         videoId: info.videoId,
         title:   info.title,
-        groupId: targets.map((gid) => gid ?? null),
+        groupId: normalized,
         savedAt: Date.now(),
       };
       if (thumb)             entry.thumbnail = thumb;
@@ -851,15 +909,7 @@ async function handleSave(btn) {
   const info = getVideoInfo();
   if (!info) return;
   try {
-    const { savedVideos = [] } = await chrome.storage.local.get('savedVideos');
-    if (savedVideos.some((v) => v.videoId === info.videoId)) {
-      // Delete ALL copies across all folders at once
-      const updated = savedVideos.filter((v) => v.videoId !== info.videoId);
-      await chrome.storage.local.set({ savedVideos: updated });
-      await updateButtonState(btn);
-      return;
-    }
-    openSaveModal(btn, info, { saveToFolders: saveVideoToFolders, onSaved: updateButtonState });
+    openSaveModal(btn, info, { saveToFolders: setVideoFolders, onSaved: updateButtonState });
   } catch {}
 }
 
